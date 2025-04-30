@@ -14,7 +14,7 @@ locals {
   retry_join = "provider=aws tag_key=NomadJoinTag tag_value=auto-join"
 }
 
-resource "aws_security_group" "nomad_ui_ingress" {
+resource "aws_security_group" "server_ingress" {
   name   = "${var.name}-ui-ingress"
   vpc_id = data.aws_vpc.default.id
 
@@ -22,6 +22,13 @@ resource "aws_security_group" "nomad_ui_ingress" {
   ingress {
     from_port       = 4646
     to_port         = 4646
+    protocol        = "tcp"
+    cidr_blocks     = [var.allowlist_ip]
+  }
+
+  ingress {
+    from_port       = 8500
+    to_port         = 8500
     protocol        = "tcp"
     cidr_blocks     = [var.allowlist_ip]
   }
@@ -109,17 +116,29 @@ resource "aws_security_group" "clients_ingress" {
   # These rules are applied only to the client nodes
 
   # nginx example
-  # ingress {
-  #   from_port   = 80
-  #   to_port     = 80
-  #   protocol    = "tcp"
-  #   cidr_blocks = ["0.0.0.0/0"]
-  # }
   ingress {
-    from_port   = 5000
-    to_port     = 5000
+    from_port   = 22
+    to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.allowlist_ip]
+  }
+  ingress {
+    from_port   = 80
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.allowlist_ip]
+  }
+  ingress {
+    from_port   = 443
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.allowlist_ip]
+  }
+    ingress {
+    from_port   = 32000
+    to_port     = 32010
+    protocol    = "tcp"
+    cidr_blocks = [var.allowlist_ip]
   }
 }
 
@@ -149,15 +168,16 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-resource "tls_private_key" "private_key" {
-  algorithm = "RSA"
-  rsa_bits  = 4096
-}
+# 인증서 생성하지 않고 기존 인증서 사용
+# resource "tls_private_key" "private_key" {
+#   algorithm = "RSA"
+#   rsa_bits  = 4096
+# }
 
-resource "aws_key_pair" "generated_key" {
-  key_name   = "tf-key"
-  public_key = tls_private_key.private_key.public_key_openssh
-}
+# resource "aws_key_pair" "generated_key" {
+#   key_name   = "tf-key"
+#   public_key = tls_private_key.private_key.public_key_openssh
+# }
 
 # Uncomment the private key resource below if you want to SSH to any of the instances
 # Run init and apply again after uncommenting:
@@ -174,8 +194,9 @@ resource "aws_key_pair" "generated_key" {
 resource "aws_instance" "server" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.server_instance_type
-  key_name               = aws_key_pair.generated_key.key_name
-  vpc_security_group_ids = [aws_security_group.nomad_ui_ingress.id, aws_security_group.ssh_ingress.id, aws_security_group.allow_all_internal.id]
+  # key_name               = aws_key_pair.generated_key.key_name
+  key_name               = "hw-macbook"
+  vpc_security_group_ids = [aws_security_group.server_ingress.id, aws_security_group.ssh_ingress.id, aws_security_group.allow_all_internal.id]
   count                  = var.server_count
 
   connection {
@@ -213,13 +234,13 @@ resource "aws_instance" "server" {
     destination = "/ops"
   }
 
-  user_data = templatefile("../shared/data-scripts/user-data-server.sh", {
-    server_count              = var.server_count
-    region                    = var.region
-    cloud_env                 = "aws"
-    retry_join                = local.retry_join
-    nomad_version             = var.nomad_version
-  })
+  # user_data = templatefile("../shared/data-scripts/user-data-server.sh", {
+  #   server_count              = var.server_count
+  #   region                    = var.region
+  #   cloud_env                 = "aws"
+  #   retry_join                = local.retry_join
+  #   nomad_version             = var.nomad_version
+  # })
   iam_instance_profile = aws_iam_instance_profile.instance_profile.name
 
   metadata_options {
@@ -228,12 +249,12 @@ resource "aws_instance" "server" {
   }
 }
 
-resource "aws_instance" "client" {
+resource "aws_instance" "infra" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.client_instance_type
   key_name               = aws_key_pair.generated_key.key_name
-  vpc_security_group_ids = [aws_security_group.nomad_ui_ingress.id, aws_security_group.ssh_ingress.id, aws_security_group.clients_ingress.id, aws_security_group.allow_all_internal.id]
-  count                  = var.client_count
+  vpc_security_group_ids = [aws_security_group.server_ingress.id, aws_security_group.ssh_ingress.id, aws_security_group.clients_ingress.id, aws_security_group.allow_all_internal.id]
+  count                  = var.infra_count
 
   connection {
     type        = "ssh"
@@ -277,12 +298,12 @@ resource "aws_instance" "client" {
     destination = "/ops"
   }
 
-  user_data = templatefile("../shared/data-scripts/user-data-client.sh", {
-    region                    = var.region
-    cloud_env                 = "aws"
-    retry_join                = local.retry_join
-    nomad_version             = var.nomad_version
-  })
+  # user_data = templatefile("../shared/data-scripts/user-data-client.sh", {
+  #   region                    = var.region
+  #   cloud_env                 = "aws"
+  #   retry_join                = local.retry_join
+  #   nomad_version             = var.nomad_version
+  # })
   iam_instance_profile = aws_iam_instance_profile.instance_profile.name
 
   metadata_options {

@@ -5,6 +5,7 @@ variable "name" {
 
 variable "region" {
   description = "The AWS region to deploy to."
+  default   = "ap-northeast-2"
 }
 
 variable "allowlist_ip" {
@@ -14,12 +15,12 @@ variable "allowlist_ip" {
 
 variable "server_instance_type" {
   description = "The AWS instance type to use for servers."
-  default     = "t2.micro"
+  default     = "t3.large"
 }
 
 variable "client_instance_type" {
   description = "The AWS instance type to use for clients."
-  default     = "t2.micro"
+  default     = "t3.xlarge"
 }
 
 variable "server_count" {
@@ -27,9 +28,9 @@ variable "server_count" {
   default     = "3"
 }
 
-variable "client_count" {
-  description = "The number of clients to provision."
-  default     = "2"
+variable "infra_count" {
+  description = "The number of infra to provision."
+  default     = "1"
 }
 
 variable "root_block_device_size" {
